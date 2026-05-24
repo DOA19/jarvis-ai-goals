@@ -1,0 +1,127 @@
+:root {
+  --hud: #0a0f1e;
+  --panel: #0d1530;
+  --panel2: #111d3a;
+  --accent: #00d4ff;
+  --accent2: #7b61ff;
+  --accent3: #00ff9d;
+  --warn: #ffa500;
+  --danger: #ff4444;
+  --text: #e0f0ff;
+  --muted: #607a99;
+  --border: rgba(0, 212, 255, 0.15);
+  --border2: rgba(0, 212, 255, 0.30);
+  --medicine: #00d4ff;
+  --acting: #a78bff;
+  --school: #00ff9d;
+  --fitness: #fbbf24;
+  --fun: #ff6b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--hud);
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-nunito), sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+}
+
+.grid-bg {
+  background:
+    linear-gradient(rgba(0, 212, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 50% 0%, rgba(0, 212, 255, 0.16), transparent 34%),
+    var(--hud);
+  background-size: 44px 44px, 44px 44px, 100% 70%, auto;
+}
+
+.jarvis-panel {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(17, 29, 58, 0.88), rgba(13, 21, 48, 0.94));
+  box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.03), 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+
+.jarvis-card {
+  border: 1px solid var(--border);
+  background: rgba(13, 21, 48, 0.82);
+  border-radius: 8px;
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.jarvis-card:hover {
+  border-color: var(--border2);
+  box-shadow: 0 0 26px rgba(0, 212, 255, 0.09);
+  transform: translateY(-1px);
+}
+
+.scan-label {
+  font-family: var(--font-share-tech), monospace;
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.tab-shell {
+  animation: fadeSlide 220ms ease;
+}
+
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+
+.scanline::after {
+  background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.22), transparent);
+  content: '';
+  height: 100%;
+  left: -45%;
+  position: absolute;
+  top: 0;
+  width: 40%;
+  animation: scan 4s ease-in-out infinite;
+}
+
+.glass {
+  background: rgba(10, 15, 30, 0.78);
+  backdrop-filter: blur(12px);
+}
+
+.pulse-check {
+  animation: pulseCheck 420ms ease;
+}
+
+@keyframes scan {
+  0%, 45% { transform: translateX(0); }
+  100% { transform: translateX(360%); }
+}
+
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseCheck {
+  0% { transform: scale(0.86); }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
