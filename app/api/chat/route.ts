@@ -16,10 +16,10 @@ export async function POST(request: Request) {
           content ||
           "Systems online. I need a little more context, but the next move is simple: pick the highest-impact incomplete task and finish the first 10 minutes now."
       });
-    } catch {
+    } catch (error) {
+      const details = error instanceof Error ? error.message : 'Unknown OpenRouter failure';
       return NextResponse.json({
-        content:
-          "Systems temporarily offline. Use local logic: remove the biggest uncertainty first, then handle the highest-impact unlock. Concrete action: spend 10 minutes on your #1 task now."
+        content: `OpenRouter is configured, but the request failed: ${details}`
       });
     }
   } catch {

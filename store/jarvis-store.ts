@@ -2,7 +2,6 @@
 
 import { create } from 'zustand';
 import { BrainDumpRecord, BrainDumpResponse, Category, CategoryId, ChatMessage, Milestone, TabId, Task } from '@/types';
-import { categoriesSeed, milestonesSeed, tasksSeed } from '@/lib/seed-data';
 
 type Toast = { id: string; message: string; tone?: 'success' | 'warn' | 'danger' | 'info' };
 
@@ -27,56 +26,47 @@ interface JarvisState {
   clearChat: () => void;
 }
 
-const STORAGE_KEY = 'jarvis-state-v1';
+const emptyState = { categories: [] as Category[], tasks: [] as Task[], milestones: [] as Milestone[], dumps: [] as BrainDumpRecord[], messages: [] as ChatMessage[] };
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function persist(state: Pick<JarvisState, 'categories' | 'tasks' | 'milestones' | 'dumps' | 'messages'>) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      categories: state.categories,
-      tasks: state.tasks,
-      milestones: state.milestones,
-      dumps: state.dumps,
-      messages: state.messages
-    })
-  );
-}
-
 export const useJarvisStore = create<JarvisState>((set, get) => ({
   activeTab: 'briefing',
-  categories: categoriesSeed,
-  tasks: tasksSeed,
-  milestones: milestonesSeed,
-  dumps: [],
-  messages: [],
+  categories: emptyState.categories,
+  tasks: emptyState.tasks,
+  milestones: emptyState.milestones,
+  dumps: emptyState.dumps,
+  messages: emptyState.messages,
   toasts: [],
   hydrated: false,
   setActiveTab: (tab) => set({ activeTab: tab }),
   hydrate: () => {
     if (typeof window === 'undefined' || get().hydrated) return;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    void (async () => {
       try {
-        const parsed = JSON.parse(stored) as Partial<JarvisState>;
-        set({
-          categories: parsed.categories ?? categoriesSeed,
-          tasks: parsed.tasks ?? tasksSeed,
-          milestones: parsed.milestones ?? milestonesSeed,
-          dumps: parsed.dumps ?? [],
-          messages: parsed.messages ?? [],
-          hydrated: true
-        });
-        return;
+        const [categoriesResponse, tasksResponse, milestonesResponse, dumpsResponse, messagesResponse] = await Promise.all([
+          fetch('/api/categories'),
+          fetch('/api/tasks'),
+          fetch('/api/milestones'),
+          fetch('/api/brain-dumps'),
+          fetch('/api/messages')
+        ]);
+
+        const [categories, tasks, milestones, dumps, messages] = await Promise.all([
+          categoriesResponse.ok ? categoriesResponse.json() : Promise.resolve([]),
+          tasksResponse.ok ? tasksResponse.json() : Promise.resolve([]),
+          milestonesResponse.ok ? milestonesResponse.json() : Promise.resolve([]),
+          dumpsResponse.ok ? dumpsResponse.json() : Promise.resolve([]),
+          messagesResponse.ok ? messagesResponse.json() : Promise.resolve([])
+        ]);
+
+        set({ categories, tasks, milestones, dumps, messages, hydrated: true });
       } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        set({ hydrated: true });
       }
-    }
-    set({ hydrated: true });
+    })();
   },
   addToast: (message, tone = 'info') => {
     const id = newId('toast');
@@ -85,32 +75,43 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
   },
   removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
   toggleTask: (id) => {
-    set((state) => {
-      const tasks = state.tasks.map((task) =>
-        task.id === id
-          ? {
-              ...task,
-              done: !task.done,
-              completedAt: !task.done ? new Date().toISOString() : null,
-              updatedAt: new Date().toISOString()
-            }
-          : task
-      );
-      persist({ ...state, tasks });
-      return { tasks };
+    const task = get().tasks.find((item) => item.id === id);
+    if (!task) return;
+    const done = !task.done;
+    const completedAt = done ? new Date().toISOString() : null;
+    const updatedAt = new Date().toISOString();
+
+    set((state) => ({
+      tasks: state.tasks.map((item) => (item.id === id ? { ...item, done, completedAt, updatedAt } : item))
+    }));
+
+    void fetch('/api/tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, done, completedAt, updatedAt })
     });
+
     get().addToast('Task status updated', 'success');
   },
   toggleMilestone: (id) => {
-    set((state) => {
-      const milestones = state.milestones.map((milestone) =>
-        milestone.id === id ? { ...milestone, done: !milestone.done } : milestone
-      );
-      persist({ ...state, milestones });
-      return { milestones };
+    const milestone = get().milestones.find((item) => item.id === id);
+    if (!milestone) return;
+    const done = !milestone.done;
+
+    set((state) => ({
+      milestones: state.milestones.map((item) => (item.id === id ? { ...item, done } : item))
+    }));
+
+    void fetch('/api/milestones', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, done })
     });
   },
   applyBrainDump: (rawText, response) => {
+    const count =
+      response.tasks_completed.length + response.tasks_to_add.length + Object.keys(response.category_updates).length + response.milestones_to_add.length;
+
     set((state) => {
       const tasks = state.tasks.map((task) => {
         const matched = response.tasks_completed.some(
@@ -169,34 +170,44 @@ export const useJarvisStore = create<JarvisState>((set, get) => ({
         ...state.dumps
       ];
 
-      persist({ ...state, categories, tasks, milestones, dumps });
       return { categories, tasks, milestones, dumps };
     });
-    const count =
-      response.tasks_completed.length + response.tasks_to_add.length + Object.keys(response.category_updates).length;
+
+    void fetch('/api/brain-dumps/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawText, response })
+    });
+
     get().addToast(`J.A.R.V.I.S. updated ${count} system items`, 'success');
   },
   updateCategoryNextAction: (id, nextAction) => {
-    set((state) => {
-      const categories = state.categories.map((category) => (category.id === id ? { ...category, nextAction } : category));
-      persist({ ...state, categories });
-      return { categories };
+    set((state) => ({
+      categories: state.categories.map((category) => (category.id === id ? { ...category, nextAction } : category))
+    }));
+
+    void fetch('/api/categories', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, nextAction })
     });
   },
   addChatMessage: (message) => {
+    const id = newId('message');
+    const createdAt = new Date().toISOString();
     set((state) => {
-      const messages = [
-        ...state.messages,
-        { ...message, id: newId('message'), createdAt: new Date().toISOString() }
-      ].slice(-20);
-      persist({ ...state, messages });
+      const messages = [...state.messages, { ...message, id, createdAt }].slice(-20);
       return { messages };
+    });
+
+    void fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message)
     });
   },
   clearChat: () => {
-    set((state) => {
-      persist({ ...state, messages: [] });
-      return { messages: [] };
-    });
+    set({ messages: [] });
+    void fetch('/api/messages', { method: 'DELETE' });
   }
 }));
